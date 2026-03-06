@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Painel de Usuários com Admin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+html, body { margin:0; padding:0; height:100%; width:100%; font-family:'Segoe UI', sans-serif; background:#020617; color:white; }
+
+.panel{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.9);
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+padding:20px;
+overflow:auto;
+}
+
+.panel h2,.panel h3{margin-bottom:15px;}
+
+input{
+width:300px;
+max-width:90%;
+padding:12px;
+margin-bottom:10px;
+border:none;
+border-radius:10px;
+background:rgba(0,0,0,0.5);
+color:white;
+font-size:16px;
+}
+
+button{
+width:300px;
+max-width:90%;
+padding:12px;
+border:none;
+border-radius:10px;
+background:linear-gradient(135deg,#3b82f6,#2563eb);
+color:white;
+font-weight:600;
+font-size:16px;
+cursor:pointer;
+margin-bottom:15px;
+}
+
+ul{
+list-style:none;
+padding:10px;
+margin:0;
+width:300px;
+max-width:90%;
+max-height:400px;
+overflow-y:auto;
+background:rgba(0,0,0,0.65);
+border-radius:10px;
+}
+
+ul li{
+display:flex;
+justify-content:space-between;
+padding:8px;
+border-bottom:1px solid rgba(255,255,255,0.2);
+font-size:14px;
+}
+
+.localUser{
+color:#3b82f6;
+font-weight:bold;
+}
+</style>
+</head>
+
+<body>
+
+<div class="panel" id="userPanel">
+
+<h2>Login ou Criar Usuário</h2>
+
+<input id="nomeUsuario" placeholder="Digite seu nome">
+<input id="senhaUsuario" type="password" placeholder="Digite sua senha">
+
+<button id="entrarBtn">🔑 Entrar / Criar Usuário</button>
+
+<h3>Top Usuários</h3>
+
+<ul id="topTable"></ul>
+
+<button id="adminBtn">⚙ Painel Admin</button>
+
+</div>
+
+
+<div class="panel" id="adminPanel" style="display:none;">
+
+<h2>Painel Admin</h2>
+
+<input id="usuarioAdmin" placeholder="Digite usuário admin">
+
+<button id="acessarAdmin">Entrar</button>
+
+<button id="apagarTodos" style="margin-top:30px; display:none;">
+🗑 Apagar Todos Usuários
+</button>
+
+<button id="voltarUser" style="margin-top:10px;">
+⬅ Voltar
+</button>
+
+</div>
+
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, where, getDocs, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+const firebaseConfig = {
+apiKey:"AIzaSyBRU1COppsLe_QJmmRmFRASW-w_5pdUMSw",
+authDomain:"teste-f56fb.firebaseapp.com",
+projectId:"teste-f56fb"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const usersRef = collection(db,"usuarios");
+
+let usuarioLocalId = null;
+let startTime = 0;
+let intervaloTempo = null;
+
+const ADMIN_KEY = "admin15996529204sas";
+
+
+document.getElementById("entrarBtn").addEventListener("click", async ()=>{
+
+const nome = document.getElementById("nomeUsuario").value.trim();
+const senha = document.getElementById("senhaUsuario").value.trim();
+
+if(!nome || !senha){
+alert("Digite nome e senha!");
+return;
+}
+
+const q = query(usersRef, where("nome","==",nome));
+const snap = await getDocs(q);
+
+if(!snap.empty){
+
+const data = snap.docs[0].data();
+
+if(data.senha !== senha){
+alert("Nome já existe, mas a senha está incorreta!");
+return;
+}
+
+usuarioLocalId = snap.docs[0].id;
+
+startTime = Date.now() - (data.tempo*1000);
+
+alert("Login efetuado com sucesso!");
+
+}else{
+
+startTime = Date.now();
+
+const docRef = await addDoc(usersRef,{
+nome,
+senha,
+tempo:0
+});
+
+usuarioLocalId = docRef.id;
+
+alert("Usuário criado com sucesso!");
+
+}
+
+document.getElementById("nomeUsuario").value="";
+document.getElementById("senhaUsuario").value="";
+
+if(intervaloTempo) clearInterval(intervaloTempo);
+
+intervaloTempo = setInterval(atualizarTempo,1000);
+
+});
+
+
+async function atualizarTempo(){
+
+if(!usuarioLocalId) return;
+
+const tempo = Math.floor((Date.now()-startTime)/1000);
+
+try{
+
+const docRef = doc(db,"usuarios",usuarioLocalId);
+
+await updateDoc(docRef,{tempo});
+
+}catch(e){
+console.error("Erro ao atualizar tempo:",e);
+}
+
+}
+
+
+function ouvirTop(){
+
+onSnapshot(usersRef,snap=>{
+
+const topUl = document.getElementById("topTable");
+
+topUl.innerHTML="";
+
+let arr=[];
+
+snap.forEach(doc=>{
+arr.push({
+id:doc.id,
+nome:doc.data().nome,
+tempo:doc.data().tempo
+});
+});
+
+arr.sort((a,b)=>b.tempo-a.tempo)
+.slice(0,1000)
+.forEach((u,i)=>{
+
+const li=document.createElement("li");
+
+li.innerHTML=`<span>#${i+1}</span> ${u.nome} <span>${u.tempo}s</span>`;
+
+if(usuarioLocalId && u.id===usuarioLocalId){
+li.classList.add("localUser");
+}
+
+topUl.appendChild(li);
+
+});
+
+});
+
+}
+
+ouvirTop();
+
+
+document.getElementById("adminBtn").addEventListener("click",()=>{
+
+document.getElementById("userPanel").style.display="none";
+document.getElementById("adminPanel").style.display="flex";
+
+});
+
+
+document.getElementById("acessarAdmin").addEventListener("click",()=>{
+
+const usuarioDigitado = document.getElementById("usuarioAdmin").value.trim();
+
+if(usuarioDigitado === ADMIN_KEY){
+
+alert("Bem-vindo Admin!");
+
+document.getElementById("apagarTodos").style.display="block";
+
+}else{
+
+alert("Usuário incorreto!");
+
+document.getElementById("apagarTodos").style.display="none";
+
+}
+
+});
+
+
+document.getElementById("apagarTodos").addEventListener("click", async ()=>{
+
+if(!confirm("Deseja realmente apagar todos os usuários?")) return;
+
+const snap = await getDocs(usersRef);
+
+snap.forEach(async d=>{
+await deleteDoc(doc(db,"usuarios",d.id));
+});
+
+alert("Todos os usuários foram apagados!");
+
+});
+
+
+document.getElementById("voltarUser").addEventListener("click",()=>{
+
+document.getElementById("adminPanel").style.display="none";
+document.getElementById("userPanel").style.display="flex";
+
+document.getElementById("apagarTodos").style.display="none";
+
+});
+
+</script>
+
+</body>
+</html>
